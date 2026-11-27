@@ -88,8 +88,38 @@ export function PainelFiltros({ filtros, opcoes, referencia, aoAplicar, aoFechar
   const ativo = (campo: keyof Filtros, valor: string) => (rascunho[campo] as string[]).includes(valor);
 
   const busca = normalizarChave(buscaItem);
-  const itensVisiveis = opcoes.itens.filter((i) => !busca || normalizarChave(i.nome).includes(busca));
-  const livresVisiveis = opcoes.livres.filter((i) => !busca || i.chave.includes(busca));
+
+  /**
+   * Ordem da busca: quem começa com o que foi digitado vem primeiro ("a" → Alimentos antes de
+   * Fraldas), depois quem contém no meio. Dentro de cada grupo, mantém a ordem recebida.
+   */
+  const porBusca = <T,>(lista: T[], chaveDe: (item: T) => string) => {
+    if (!busca) return lista;
+    const combinam = lista.filter((i) => chaveDe(i).includes(busca));
+    return [...combinam.filter((i) => chaveDe(i).startsWith(busca)), ...combinam.filter((i) => !chaveDe(i).startsWith(busca))];
+  };
+
+  /**
+   * Com uma causa escolhida, os itens que as ONGs dela pedem sobem para o topo e os que
+   * nenhuma pede saem da lista: escolher "Animais" mostra ração e remédios, não material escolar.
+   * Sem causa escolhida, a lista fica inteira, na ordem do admin.
+   */
+  const ordenarPelasCausas = <T,>(lista: T[], chaveDe: (item: T) => string, campo: "itens" | "livres") => {
+    if (rascunho.causas.length === 0) return lista;
+    const posicao = new Map<string, number>();
+    for (const causa of rascunho.causas) {
+      (opcoes.itensPorCausa[causa]?.[campo] ?? []).forEach((valor, i) => {
+        posicao.set(valor, Math.min(posicao.get(valor) ?? Infinity, i));
+      });
+    }
+    // um item já marcado continua visível, mesmo que a causa nova não o use
+    return lista
+      .filter((i) => posicao.has(chaveDe(i)) || ativo(campo, chaveDe(i)))
+      .sort((a, b) => (posicao.get(chaveDe(a)) ?? Infinity) - (posicao.get(chaveDe(b)) ?? Infinity));
+  };
+
+  const itensVisiveis = porBusca(ordenarPelasCausas(opcoes.itens, (i) => i.slug, "itens"), (i) => normalizarChave(i.nome));
+  const livresVisiveis = porBusca(ordenarPelasCausas(opcoes.livres, (i) => i.chave, "livres"), (i) => i.chave);
 
   return (
     <div className="fixed inset-0 z-50 flex md:justify-start" role="dialog" aria-modal="true" aria-labelledby="titulo-filtros">
@@ -125,6 +155,11 @@ export function PainelFiltros({ filtros, opcoes, referencia, aoAplicar, aoFechar
           </Secao>
 
           <Secao titulo="Tenho para doar">
+            {rascunho.causas.length > 0 && (
+              <span className="text-sm leading-normal text-tinta-suave">
+                Mostrando o que as ONGs {rascunho.causas.length === 1 ? "dessa causa pedem" : "dessas causas pedem"}.
+              </span>
+            )}
             <input
               type="search"
               value={buscaItem}
@@ -153,7 +188,9 @@ export function PainelFiltros({ filtros, opcoes, referencia, aoAplicar, aoFechar
               </>
             )}
             {itensVisiveis.length + livresVisiveis.length === 0 && (
-              <span className="text-sm text-tinta-suave">Nenhum item com esse nome.</span>
+              <span className="text-sm text-tinta-suave">
+                {busca ? "Nenhum item com esse nome." : "As ONGs dessa causa ainda não cadastraram itens."}
+              </span>
             )}
           </Secao>
 

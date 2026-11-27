@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { DIAS_FILTRO, TURNOS_FILTRO, type DiaFiltro, type TurnoFiltro } from "@/lib/mapa/filtros";
+import { DIAS_FILTRO, MAX_LISTA, TURNOS_FILTRO, type DiaFiltro, type TurnoFiltro } from "@/lib/mapa/filtros";
 import { slugSchema } from "./base.schema";
 
 // Área pública: GET /api/ongs (lista perto de um ponto), GET /api/ongs/mapa (pins) e
@@ -26,7 +26,9 @@ const longitude = z.coerce.number({ error: "Longitude inválida" }).min(-180).ma
 export const listaProximasSchema = z.object({
   lat: latitude,
   lng: longitude,
-  limite: z.coerce.number().int().min(0).max(50).default(30), // 0 = só a contagem
+  // 0 = só a contagem. O teto segura o custo da consulta: a lista cresce de pedaço em pedaço
+  // conforme a pessoa rola, e para de crescer aqui.
+  limite: z.coerce.number().int().min(0).max(MAX_LISTA).default(30),
 });
 
 /** GET /api/ongs/mapa: área visível do mapa, "oeste,sul,leste,norte". */

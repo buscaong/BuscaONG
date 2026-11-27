@@ -335,3 +335,46 @@ export async function itensLivresPopulares(limite = 12): Promise<ItemLivrePopula
   });
   return resultado as unknown as ItemLivrePopular[];
 }
+
+/** Itens (da lista fixa e livres) que as ONGs de cada causa costumam pedir. */
+export type ItensPorCausa = Record<string, { itens: string[]; livres: string[] }>;
+
+/**
+ * Para cada causa, os itens pedidos por quem atua nela (P2): escolher "Animais" põe ração e
+ * remédios na frente, e não material escolar. Sai do que as ONGs publicadas realmente
+ * cadastraram, então acompanha o banco sem ninguém manter uma tabela de correspondência.
+ */
+export async function itensDasCausas(): Promise<ItensPorCausa> {
+  const resultado = (await prisma.ong.aggregateRaw({
+    pipeline: [
+      { $match: { status: "PUBLICADA" } },
+      { $unwind: "$causas" },
+      {
+        $project: {
+          causa: "$causas",
+          itens: { $ifNull: ["$itens", []] },
+          livres: { $map: { input: { $ifNull: ["$itensLivres", []] }, as: "i", in: "$$i.chave" } },
+        },
+      },
+      {
+        $group: {
+          _id: "$causa",
+          // um item por ONG, para contar em quantas ONGs daquela causa ele aparece
+          itens: { $push: "$itens" },
+          livres: { $push: "$livres" },
+        },
+      },
+    ],
+  })) as unknown as { _id: string; itens: string[][]; livres: string[][] }[];
+
+  // ordena por número de ONGs que pedem o item, do mais pedido para o menos
+  const porFrequencia = (listas: string[][]) => {
+    const contagem = new Map<string, number>();
+    for (const lista of listas) for (const valor of new Set(lista)) contagem.set(valor, (contagem.get(valor) ?? 0) + 1);
+    return [...contagem.entries()].sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0])).map(([valor]) => valor);
+  };
+
+  return Object.fromEntries(
+    resultado.map((c) => [c._id, { itens: porFrequencia(c.itens), livres: porFrequencia(c.livres) }])
+  );
+}

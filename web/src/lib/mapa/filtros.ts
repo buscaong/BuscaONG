@@ -1,5 +1,12 @@
 // Filtros da área pública (P2): usados pela tela, pela URL das rotas e pelo servidor.
 
+/**
+ * Máximo de ONGs que a lista carrega (P1/P3). A lista cresce de pedaço em pedaço conforme a
+ * pessoa rola e para aqui: o custo de cada consulta fica limitado, e quem precisa de mais que
+ * isso acha pelos filtros ou pela busca, não rolando.
+ */
+export const MAX_LISTA = 120;
+
 export const DIAS_FILTRO = [
   { valor: "DOMINGO", letra: "D", nome: "Domingo", curto: "Dom" },
   { valor: "SEGUNDA", letra: "S", nome: "Segunda", curto: "Seg" },

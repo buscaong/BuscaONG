@@ -4,8 +4,6 @@ import type { Filtros } from "@/lib/mapa/filtros";
 import { SlidersHorizontal, X } from "lucide-react";
 import { alternarFiltro, filtrosAtivos, semFiltro, type OpcoesFiltro } from "./tipos";
 
-const ATALHOS = 3; // causas sugeridas ao lado dos filtros ativos
-
 type Props = {
   filtros: Filtros;
   opcoes: OpcoesFiltro;
@@ -16,7 +14,8 @@ type Props = {
 /** Fileira abaixo da busca (P1/P3): botão de filtros, filtros ativos (com ×) e atalhos de causa. */
 export function ChipsFiltros({ filtros, opcoes, aoMudar, aoAbrirFiltros }: Props) {
   const ativos = filtrosAtivos(filtros, opcoes);
-  const atalhos = opcoes.causas.filter((c) => !filtros.causas.includes(c.slug)).slice(0, ATALHOS);
+  // todas as causas que ainda não estão ativas; a fileira rola na horizontal
+  const atalhos = opcoes.causas.filter((c) => !filtros.causas.includes(c.slug));
 
   const chip = "flex h-9 shrink-0 cursor-pointer items-center gap-1.5 whitespace-nowrap rounded-[11px] px-3 text-sm";
 

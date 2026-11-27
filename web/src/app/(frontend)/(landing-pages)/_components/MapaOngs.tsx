@@ -247,6 +247,15 @@ export function MapaOngs({ centroInicial, pins, pessoa, selecionada, margemInfer
     mapa.current?.setPadding({ top: 0, left: 0, right: 0, bottom: margemInferior });
   }, [margemInferior, carregado]);
 
+  // o mapbox guarda o tamanho do canvas: sem avisar, arrastar a divisória da lista deixaria
+  // o mapa esticado até o próximo movimento
+  useEffect(() => {
+    if (!carregado || !container.current) return;
+    const observador = new ResizeObserver(() => mapa.current?.resize());
+    observador.observe(container.current);
+    return () => observador.disconnect();
+  }, [carregado]);
+
   if (!TOKEN) {
     return (
       <div className="flex h-full items-center justify-center bg-salvia-clara p-6 text-center text-sm text-tinta-suave">

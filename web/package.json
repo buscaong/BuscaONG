@@ -16,6 +16,7 @@
     "postinstall": "prisma generate",
     "db:push": "prisma db push",
     "db:seed": "node --env-file-if-exists=.env prisma/seed.mts",
+    "db:demo": "node --env-file-if-exists=.env prisma/demo.mts",
     "admin:criar": "node --env-file-if-exists=.env prisma/criar-admin.mts"
   },
   "dependencies": {

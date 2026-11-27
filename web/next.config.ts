@@ -13,6 +13,9 @@ if (process.env.VERCEL_ENV === 'production') {
 }
 
 const nextConfig: NextConfig = {
+  // em desenvolvimento o Next só aceita recursos (HMR) vindos de localhost; sem isto, abrir
+  // pelo IP (127.0.0.1, ou o da rede, para ver no celular) carrega o HTML mas não o JavaScript
+  allowedDevOrigins: ['127.0.0.1'],
   turbopack: {
     // raiz do monorepo; evita o Next adivinhar a raiz por lockfiles fora do repo
     root: path.join(__dirname, '..'),

@@ -4,19 +4,22 @@ import toast from "react-hot-toast";
 
 import { useIsMobile } from "@/hooks/use-mobile";
 import { cn } from "@/lib/utils";
-import { FILTROS_VAZIOS, type Filtros } from "@/lib/mapa/filtros";
+import { FILTROS_VAZIOS, MAX_LISTA, type Filtros } from "@/lib/mapa/filtros";
 import { CENTRO_PADRAO, formatarDistancia, type Bbox, type Ponto } from "@/lib/mapa/geo";
 import { LocateFixed } from "lucide-react";
 import { buscarLista, buscarPins } from "../_actions/api";
 import { CampoBusca } from "./CampoBusca";
 import { ChipsFiltros } from "./ChipsFiltros";
+import { DivisoriaLista, useLarguraLista } from "./DivisoriaLista";
 import { ListaOngs } from "./ListaOngs";
 import { MapaOngs, type ControleMapa } from "./MapaOngs";
 import { MenuParaOngs } from "./MenuParaOngs";
 import { PainelFiltros } from "./PainelFiltros";
 import type { OngNaLista, OpcoesFiltro, PinNoMapa, Referencia, ResultadoLista } from "./tipos";
 
+// a lista começa com este tanto e cresce sozinha conforme a pessoa rola, de PAGINA em PAGINA
 const LIMITE_LISTA = 30;
+const PAGINA = 20;
 const ESPERA_PINS_MS = 250;
 const ZOOM_ONG = 15;
 // painel da lista no celular: na metade da tela ou aberto (abaixo da busca)
@@ -35,11 +38,14 @@ export function TelaMapa({ opcoes, raioKm }: Props) {
   const [bbox, setBbox] = useState<Bbox | null>(null);
   const [lista, setLista] = useState<ResultadoLista | null>(null);
   const [erroLista, setErroLista] = useState(false);
+  // quantas ONGs a lista pede, e para qual busca esse número vale
+  const [limiteLista, setLimiteLista] = useState({ busca: "", quantas: LIMITE_LISTA });
   const [pins, setPins] = useState<PinNoMapa[] | null>(null); // null = ainda não carregou
   const [selecionada, setSelecionada] = useState<string | null>(null);
   const [filtrosAbertos, setFiltrosAbertos] = useState(false);
   const [painel, setPainel] = useState<"meio" | "aberto">("meio");
   const [alturaJanela, setAlturaJanela] = useState(800);
+  const [larguraLista, setLarguraLista] = useLarguraLista();
 
   useEffect(() => {
     const medir = () => setAlturaJanela(window.innerHeight);
@@ -69,9 +75,22 @@ export function TelaMapa({ opcoes, raioKm }: Props) {
   useEffect(() => localizar(false), [localizar]);
 
   // ---- lista (perto da referência) ----
+  // O limite guarda a busca a que pertence: com filtros ou ponto novos ele não vale mais e a
+  // lista volta ao tamanho inicial, sem carregar de uma vez o que a rolagem anterior esticou.
+  const chaveDaBusca = `${referencia.ponto.latitude},${referencia.ponto.longitude}|${JSON.stringify(filtros)}`;
+  const limiteAtual = limiteLista.busca === chaveDaBusca ? limiteLista.quantas : LIMITE_LISTA;
+
+  // estável entre renders: a lista a usa dentro de um IntersectionObserver
+  const carregarMais = useCallback(() => {
+    setLimiteLista((atual) => {
+      const quantas = atual.busca === chaveDaBusca ? atual.quantas : LIMITE_LISTA;
+      return { busca: chaveDaBusca, quantas: Math.min(quantas + PAGINA, MAX_LISTA) };
+    });
+  }, [chaveDaBusca]);
+
   useEffect(() => {
     const controle = new AbortController();
-    buscarLista(referencia.ponto, filtros, LIMITE_LISTA, controle.signal)
+    buscarLista(referencia.ponto, filtros, limiteAtual, controle.signal)
       .then((resultado) => {
         setLista(resultado);
         setErroLista(false);
@@ -80,7 +99,7 @@ export function TelaMapa({ opcoes, raioKm }: Props) {
         if (erro.name !== "AbortError") setErroLista(true);
       });
     return () => controle.abort();
-  }, [referencia, filtros]);
+  }, [referencia, filtros, limiteAtual]);
 
   // ---- pins (área visível do mapa) ----
   useEffect(() => {
@@ -147,8 +166,11 @@ export function TelaMapa({ opcoes, raioKm }: Props) {
   );
 
   return (
-    <div className="relative h-dvh w-full overflow-hidden bg-creme md:grid md:grid-cols-[400px_1fr]">
-      {/* lista: painel deslizante no celular, coluna fixa no computador */}
+    <div
+      className="relative h-dvh w-full overflow-hidden bg-creme md:grid"
+      style={celular ? undefined : { gridTemplateColumns: `${larguraLista}px 1fr` }}
+    >
+      {/* lista: painel deslizante no celular, coluna de largura ajustável no computador */}
       <aside
         style={celular ? { height: alturaPainel } : undefined}
         className={cn(
@@ -175,15 +197,17 @@ export function TelaMapa({ opcoes, raioKm }: Props) {
             erro={erroLista}
             referencia={referencia}
             raioKm={raioKm}
-            bbox={bbox}
             filtros={filtros}
             opcoes={opcoes}
             selecionada={selecionada}
             aoEscolher={escolherOng}
             aoMudarFiltros={setFiltros}
+            aoChegarNoFim={carregarMais}
           />
         </div>
       </aside>
+
+      {!celular && <DivisoriaLista largura={larguraLista} aoMudar={setLarguraLista} />}
 
       <div className="absolute inset-0 md:relative md:inset-auto md:h-dvh">
         <MapaOngs

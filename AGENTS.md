@@ -54,6 +54,7 @@ pnpm test:e2e      # Playwright (precisa do dev rodando)
 pnpm build         # build de produção
 pnpm db:push       # cria coleções e índices no MongoDB (precisa do DATABASE_URL)
 pnpm db:seed       # listas fixas, índices (geográfico e slug único) e dados que faltam em ONGs antigas
+pnpm db:demo       # 100 ONGs de demonstração na Grande SP (pnpm db:demo --limpar remove só elas)
 pnpm admin:criar   # cria uma conta de admin (pergunta e-mail, nome e senha)
 ```
 

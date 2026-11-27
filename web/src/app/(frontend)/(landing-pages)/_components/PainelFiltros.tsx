@@ -7,7 +7,7 @@ import type { Ponto } from "@/lib/mapa/geo";
 import { normalizarChave } from "@/utils/formatters/texto";
 import { X } from "lucide-react";
 import { contarOngs } from "../_actions/api";
-import { alternarFiltro, type OpcoesFiltro } from "./tipos";
+import { alternarFiltro, type ItemLivre, type OpcoesFiltro } from "./tipos";
 
 type Props = {
   filtros: Filtros;
@@ -99,27 +99,52 @@ export function PainelFiltros({ filtros, opcoes, referencia, aoAplicar, aoFechar
     return [...combinam.filter((i) => chaveDe(i).startsWith(busca)), ...combinam.filter((i) => !chaveDe(i).startsWith(busca))];
   };
 
+  const comCausa = rascunho.causas.length > 0;
+
   /**
-   * Com uma causa escolhida, os itens que as ONGs dela pedem sobem para o topo e os que
-   * nenhuma pede saem da lista: escolher "Animais" mostra ração e remédios, não material escolar.
-   * Sem causa escolhida, a lista fica inteira, na ordem do admin.
+   * Itens da lista fixa: com uma causa escolhida, os que as ONGs dela pedem sobem para o topo e
+   * os que nenhuma pede saem. Sem causa, a lista fica inteira, na ordem do admin.
    */
-  const ordenarPelasCausas = <T,>(lista: T[], chaveDe: (item: T) => string, campo: "itens" | "livres") => {
-    if (rascunho.causas.length === 0) return lista;
+  const itensDaCausa = () => {
+    if (!comCausa) return opcoes.itens;
     const posicao = new Map<string, number>();
     for (const causa of rascunho.causas) {
-      (opcoes.itensPorCausa[causa]?.[campo] ?? []).forEach((valor, i) => {
-        posicao.set(valor, Math.min(posicao.get(valor) ?? Infinity, i));
+      (opcoes.itensPorCausa[causa]?.itens ?? []).forEach((slug, i) => {
+        posicao.set(slug, Math.min(posicao.get(slug) ?? Infinity, i));
       });
     }
     // um item já marcado continua visível, mesmo que a causa nova não o use
-    return lista
-      .filter((i) => posicao.has(chaveDe(i)) || ativo(campo, chaveDe(i)))
-      .sort((a, b) => (posicao.get(chaveDe(a)) ?? Infinity) - (posicao.get(chaveDe(b)) ?? Infinity));
+    return opcoes.itens
+      .filter((i) => posicao.has(i.slug) || ativo("itens", i.slug))
+      .sort((a, b) => (posicao.get(a.slug) ?? Infinity) - (posicao.get(b.slug) ?? Infinity));
   };
 
-  const itensVisiveis = porBusca(ordenarPelasCausas(opcoes.itens, (i) => i.slug, "itens"), (i) => normalizarChave(i.nome));
-  const livresVisiveis = porBusca(ordenarPelasCausas(opcoes.livres, (i) => i.chave, "livres"), (i) => i.chave);
+  /**
+   * Itens fora da lista: sem causa, os mais usados no site todo. Com causa, os mais pedidos por
+   * ela — que podem não estar entre os populares do site (ração está em poucas ONGs no total,
+   * mas é o que um abrigo de animais mais precisa), por isso vêm do servidor já com o nome.
+   */
+  const livresDaCausa = () => {
+    if (!comCausa) return opcoes.livres;
+    const porChave = new Map<string, { item: ItemLivre; posicao: number }>();
+    for (const causa of rascunho.causas) {
+      (opcoes.itensPorCausa[causa]?.livres ?? []).forEach((item, i) => {
+        const antes = porChave.get(item.chave);
+        if (!antes || i < antes.posicao) porChave.set(item.chave, { item, posicao: i });
+      });
+    }
+    // os já marcados continuam visíveis, mesmo fora da causa nova
+    for (const chave of rascunho.livres) {
+      if (!porChave.has(chave)) {
+        const item = opcoes.livres.find((l) => l.chave === chave);
+        if (item) porChave.set(chave, { item, posicao: Infinity });
+      }
+    }
+    return [...porChave.values()].sort((a, b) => a.posicao - b.posicao).map(({ item }) => item);
+  };
+
+  const itensVisiveis = porBusca(itensDaCausa(), (i) => normalizarChave(i.nome));
+  const livresVisiveis = porBusca(livresDaCausa(), (i) => i.chave);
 
   return (
     <div className="fixed inset-0 z-50 flex md:justify-start" role="dialog" aria-modal="true" aria-labelledby="titulo-filtros">

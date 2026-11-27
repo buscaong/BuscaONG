@@ -337,12 +337,32 @@ export async function itensLivresPopulares(limite = 12): Promise<ItemLivrePopula
 }
 
 /** Itens (da lista fixa e livres) que as ONGs de cada causa costumam pedir. */
-export type ItensPorCausa = Record<string, { itens: string[]; livres: string[] }>;
+export type ItensPorCausa = Record<string, { itens: string[]; livres: ItemLivrePopular[] }>;
+
+/** Quantos itens livres cada causa manda para a tela. */
+const LIVRES_POR_CAUSA = 10;
+
+/**
+ * Fatia mínima das ONGs de uma causa que precisa pedir um item para ele contar como típico dela.
+ * Sem isso, uma ONG ambiental que também marcou "animais" levaria material escolar e composteira
+ * para o filtro de Animais: os itens são certos para o que ela faz, mas não para a causa.
+ *
+ * O corte dos itens livres é mais baixo porque eles se espalham: as dez ONGs de uma causa
+ * escrevem quinze coisas diferentes, e nenhuma chega perto da fatia que um item da lista fixa
+ * alcança. Exigir o mesmo deixaria a seção vazia.
+ */
+const PARTE_MINIMA = { itens: 0.25, livres: 0.1 };
+/** Abaixo disto a proporção não diz nada (1 de 2 ONGs é 50% e mesmo assim é uma só). */
+const MINIMO_DE_ONGS = { itens: 3, livres: 2 };
 
 /**
  * Para cada causa, os itens pedidos por quem atua nela (P2): escolher "Animais" põe ração e
- * remédios na frente, e não material escolar. Sai do que as ONGs publicadas realmente
+ * areia higiênica na frente, e não material escolar. Sai do que as ONGs publicadas realmente
  * cadastraram, então acompanha o banco sem ninguém manter uma tabela de correspondência.
+ *
+ * Os itens livres vêm com nome, não só a chave: os mais pedidos numa causa podem não estar
+ * entre os populares do site inteiro (ração aparece em poucas ONGs no total, mas é o que um
+ * abrigo de animais mais precisa), e a tela não teria como mostrá-los.
  */
 export async function itensDasCausas(): Promise<ItensPorCausa> {
   const resultado = (await prisma.ong.aggregateRaw({
@@ -353,7 +373,7 @@ export async function itensDasCausas(): Promise<ItensPorCausa> {
         $project: {
           causa: "$causas",
           itens: { $ifNull: ["$itens", []] },
-          livres: { $map: { input: { $ifNull: ["$itensLivres", []] }, as: "i", in: "$$i.chave" } },
+          livres: { $ifNull: ["$itensLivres", []] },
         },
       },
       {
@@ -365,16 +385,46 @@ export async function itensDasCausas(): Promise<ItensPorCausa> {
         },
       },
     ],
-  })) as unknown as { _id: string; itens: string[][]; livres: string[][] }[];
+  })) as unknown as { _id: string; itens: string[][]; livres: { nome: string; chave: string }[][] }[];
 
-  // ordena por número de ONGs que pedem o item, do mais pedido para o menos
-  const porFrequencia = (listas: string[][]) => {
-    const contagem = new Map<string, number>();
-    for (const lista of listas) for (const valor of new Set(lista)) contagem.set(valor, (contagem.get(valor) ?? 0) + 1);
-    return [...contagem.entries()].sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0])).map(([valor]) => valor);
+  // Em quantas ONGs da causa cada item aparece (uma vez por ONG, mesmo repetido nela).
+  const contar = <T,>(listas: T[][], chaveDe: (item: T) => string) => {
+    const contagem = new Map<string, { exemplo: T; ongs: number }>();
+    for (const lista of listas) {
+      const vistos = new Set<string>();
+      for (const item of lista) {
+        const chave = chaveDe(item);
+        if (vistos.has(chave)) continue;
+        vistos.add(chave);
+        const atual = contagem.get(chave);
+        if (atual) atual.ongs++;
+        else contagem.set(chave, { exemplo: item, ongs: 1 });
+      }
+    }
+    return contagem;
+  };
+
+  /**
+   * Fica só o que uma parte razoável das ONGs da causa pede, do mais ao menos comum. O corte por
+   * proporção é o que separa o item típico da causa do que veio junto com uma ONG de outra área
+   * (as ambientais que também marcam "animais" trazem composteira e material escolar).
+   */
+  const tipicos = <T,>(listas: T[][], chaveDe: (item: T) => string, tipo: "itens" | "livres") => {
+    const minimo = Math.max(MINIMO_DE_ONGS[tipo], Math.ceil(listas.length * PARTE_MINIMA[tipo]));
+    return [...contar(listas, chaveDe).entries()]
+      .filter(([, { ongs }]) => ongs >= Math.min(minimo, listas.length))
+      .sort((a, b) => b[1].ongs - a[1].ongs || a[0].localeCompare(b[0]));
   };
 
   return Object.fromEntries(
-    resultado.map((c) => [c._id, { itens: porFrequencia(c.itens), livres: porFrequencia(c.livres) }])
+    resultado.map((c) => [
+      c._id,
+      {
+        itens: tipicos(c.itens, (slug) => slug, "itens").map(([slug]) => slug),
+        livres: tipicos(c.livres, (i) => i.chave, "livres")
+          .slice(0, LIVRES_POR_CAUSA)
+          .map(([chave, { exemplo, ongs }]) => ({ chave, nome: exemplo.nome, ongs })),
+      },
+    ])
   );
 }

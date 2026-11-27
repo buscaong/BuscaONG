@@ -362,16 +362,18 @@ const PERFIS: Record<
 const CAUSAS = Object.keys(PERFIS) as Causa[];
 
 /** Causas que combinam, para ONGs com mais de uma (o cadastro permite até 3). */
+// "animais" não entra como secundária de ninguém: uma ONG ambiental que a marcasse levaria
+// composteira e material escolar para o filtro de Animais, onde quem doa espera ração.
 const COMBINAM: Record<Causa, Causa[]> = {
   orfanatos: ["educacao", "saude", "mulheres"],
   "situacao-de-rua": ["saude", "idosos", "mulheres"],
-  animais: ["meio-ambiente", "educacao"],
+  animais: [],
   idosos: ["saude", "situacao-de-rua"],
   "pessoas-com-deficiencia": ["saude", "educacao"],
   saude: ["idosos", "pessoas-com-deficiencia", "situacao-de-rua"],
-  educacao: ["orfanatos", "meio-ambiente", "mulheres"],
+  educacao: ["orfanatos", "mulheres"],
   mulheres: ["educacao", "saude", "situacao-de-rua"],
-  "meio-ambiente": ["educacao", "animais"],
+  "meio-ambiente": ["educacao"],
 };
 
 const DIAS: DiaVoluntariado[] = [
@@ -452,17 +454,20 @@ function gerarOng(indice: number, usados: Set<string>) {
   const causas = [...new Set([causaPrincipal, ...extras])].slice(0, 3);
 
   // itens da lista fixa (puxados das causas) e itens fora da lista
-  // os itens saem sobretudo da causa principal; as secundárias entram só de vez em quando,
-  // senão uma ONG ambiental que também marcou "educação" pediria material escolar como as outras
-  const secundarias = causas.slice(1).filter(() => chance(0.35));
-  const daPrincipal = <T,>(escolha: (c: Causa) => T[]) => [
-    ...new Set([...escolha(causaPrincipal), ...secundarias.flatMap(escolha)]),
-  ];
+  // Os itens saem só da causa principal. Juntar os das secundárias faria um abrigo de animais
+  // que também marcou "educação" pedir material escolar, e no filtro por causa isso aparece
+  // como ruído: quem escolhe "Animais" quer ver ração, não caderno.
+  const daPrincipal = <T,>(escolha: (c: Causa) => T[]) => [...new Set(escolha(causaPrincipal))];
 
   const itensPossiveis = daPrincipal((c) => PERFIS[c].itens);
   const itens = varios(itensPossiveis, inteiro(2, Math.min(5, itensPossiveis.length)));
+  // Nas causas com poucos itens na lista fixa, o que a ONG precisa está quase todo fora dela
+  // (um abrigo de animais pede ração e areia, que não são opções do cadastro): aí quase toda
+  // ONG cadastra itens livres, e mais deles.
   const livresPossiveis = daPrincipal((c) => PERFIS[c].livres);
-  const itensLivres = (chance(0.6) ? varios(livresPossiveis, inteiro(1, 3)) : []).map((nome) => ({
+  const dependeDeLivres = PERFIS[causaPrincipal].itens.length <= 3;
+  const quantosLivres = dependeDeLivres ? inteiro(2, 4) : inteiro(1, 3);
+  const itensLivres = (chance(dependeDeLivres ? 0.95 : 0.6) ? varios(livresPossiveis, quantosLivres) : []).map((nome) => ({
     nome,
     chave: normalizarChave(nome),
   }));
@@ -475,7 +480,9 @@ function gerarOng(indice: number, usados: Set<string>) {
 
   // voluntariado
   const aceitaVoluntarios = chance(0.68);
-  const atividades = daPrincipal((c) => PERFIS[c].atividades);
+  // as atividades podem vir de todas as causas: uma ONG de animais que também faz educação
+  // ambiental realmente oferece as duas coisas a quem se voluntaria
+  const atividades = [...new Set(causas.flatMap((c) => PERFIS[c].atividades))];
   const horariosVoluntariado = aceitaVoluntarios
     ? varios(DIAS, inteiro(1, 3)).map((dia) => {
         const livre = chance(0.15);

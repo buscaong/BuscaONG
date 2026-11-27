@@ -11,7 +11,7 @@ export type OpcoesFiltro = {
   atividades: Opcao[];
   livres: ItemLivre[];
   /** por causa, os itens que as ONGs dela pedem, do mais ao menos comum */
-  itensPorCausa: Record<string, { itens: string[]; livres: string[] }>;
+  itensPorCausa: Record<string, { itens: string[]; livres: ItemLivre[] }>;
 };
 
 /** De onde a lista mede as distâncias. */
